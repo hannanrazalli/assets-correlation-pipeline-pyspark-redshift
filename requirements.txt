@@ -9,6 +9,8 @@ boto3
 awswrangler
 requests
 yfinance
+pyspark
+awscli
 
 # Airflow Providers
 apache-airflow-providers-amazon
