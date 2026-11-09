@@ -1,5 +1,5 @@
-import os
 import sys
+import os
 
 from awsglue.context import GlueContext
 from awsglue.job import Job
@@ -7,8 +7,6 @@ from awsglue.utils import getResolvedOptions
 from pyspark.context import SparkContext
 
 args = getResolvedOptions(sys.argv, ["JOB_NAME", "ds"])
-job_name = args["JOB_NAME"]
-date_str = args["ds"]
 
 sc = SparkContext()
 glueContext = GlueContext(sc)
@@ -16,15 +14,18 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args["JOB_NAME"], args)
 
-BUCKET_NAME = os.getenv("BUCKET_NAME")
+job_name = args["JOB_NAME"]
+target_date = args["ds"]
 
-year, month, day = date_str.split("-")
-raw_forex_path = f"s3://raw/forex/yea={year}/month={month}/day={day}/"
-raw_stocks_path = f"s3://raw/stocks/yea={year}/month={month}/day={day}/"
-raw_gold_path = f"s3://raw/gold/yea={year}/month={month}/day={day}/"
-raw_bitcoin_path = f"s3://raw/bitcoin/yea={year}/month={month}/day={day}/"
+BUCKET=os.getenv("BUCKET_NAME")
 
-df_raw_fx = spark.read.json(raw_forex_path)
-df_raw_stocks = spark.read.parquet(raw_stocks_path)
-df_raw_gold = spark.read.parquet(raw_gold_path)
-df_raw_btc = spark.read.parquet(raw_bitcoin_path)
+fx_raw_path = f"s3://{BUCKET}/raw/forex/"
+stocks_raw_path = f"s3://{BUCKET}/raw/stocks/"
+
+df_raw_fx = spark.read.json(fx_raw_path)
+df_raw_stocks = spark.read.parquet(stocks_raw_path)
+
+df_stg_fx = (df_raw_fx
+             .select(
+                 
+             ))
