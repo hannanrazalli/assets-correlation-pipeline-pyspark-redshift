@@ -2,6 +2,7 @@ import os
 from datetime import timedelta
 
 from airflow.decorators import dag, task
+from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.transfers.s3_to_redshift import S3ToRedshiftOperator
 from pendulum import datetime
 
@@ -37,11 +38,21 @@ def daily_pipeline():
 
         daily_stocks(ds=ds)
 
-    # --- 2. Copy to Redshift ---
+    # --- 2. PySpark Transform ---
+    pyspark_transform = GlueJobOperator(
+        task_id="PySpark Medallion",
+        job_name="Glue",
+        script_args={
+            "--ds": "{{ ds }}",
+        },
+        wait_for_completion=True,
+    )
+
+    # --- 3. Copy to Redshift ---
     load_forex = S3ToRedshiftOperator(
         task_id="Copy_forex_to_redshift",
         s3_bucket=BUCKET,
-        s3_key="raw/forex/"
+        s3_key="pyspark/forex/"
         "year={{ logical_date.strftime('%Y') }}/"
         "month={{ logical_date.strftime('%m') }}/"
         "day={{ logical_date.strftime('%d') }}/",
@@ -55,7 +66,7 @@ def daily_pipeline():
     load_stocks = S3ToRedshiftOperator(
         task_id="Copy_stocks_to_redshift",
         s3_bucket=BUCKET,
-        s3_key="raw/stocks/"
+        s3_key="pyspark/assets/"
         "year={{ logical_date.strftime('%Y') }}/"
         "month={{ logical_date.strftime('%m') }}/"
         "day={{ logical_date.strftime('%d') }}/",
@@ -66,8 +77,10 @@ def daily_pipeline():
         method="APPEND",
     )
 
-    daily_forex() >> load_forex
-    daily_stocks() >> load_stocks
+    run_forex = daily_forex()
+    run_stocks = daily_stocks()
+
+    [run_forex, run_stocks] >> pyspark_transform >> [load_forex, load_stocks]
 
 
 daily_pipeline()

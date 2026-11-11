@@ -124,3 +124,5 @@ assets_silver_path = f"s3://{BUCKET}/pyspark/assets/"
 
 df_int_fx.write.mode("overwrite").parquet(fx_silver_path)
 df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
+
+job.commit()
