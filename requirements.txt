@@ -10,6 +10,7 @@ awswrangler
 requests
 yfinance
 awscli
+pyspark
 
 # Airflow Providers
 apache-airflow-providers-amazon
