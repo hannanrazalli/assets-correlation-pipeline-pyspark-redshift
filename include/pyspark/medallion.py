@@ -9,10 +9,11 @@ from pyspark.sql import functions as F
 from pyspark.sql import types as T
 from pyspark.sql.window import Window
 
-args = getResolvedOptions(sys.argv, ["JOB_NAME", "ds"])
+# args = getResolvedOptions(sys.argv, ["JOB_NAME", "ds"])
+args = getResolvedOptions(sys.argv, ["JOB_NAME"])
 
 job_name = args["JOB_NAME"]
-target_date = args["ds"]
+# target_date = args["ds"]
 
 sc = SparkContext()
 glueContext = GlueContext(sc)
@@ -22,7 +23,7 @@ job.init(args["JOB_NAME"], args)
 
 BUCKET = os.getenv("BUCKET_NAME")
 
-year, month, day = target_date.split("-")
+# year, month, day = target_date.split("-")
 fx_raw_path = f"s3://{BUCKET}/raw/forex/"
 stocks_raw_path = f"s3://{BUCKET}/raw/stocks/"
 bitcoin_raw_path = f"s3://{BUCKET}/raw/bitcoin/"
@@ -124,5 +125,14 @@ assets_silver_path = f"s3://{BUCKET}/pyspark/assets/"
 
 df_int_fx.write.mode("overwrite").parquet(fx_silver_path)
 df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
+
+(
+    df_int_fx.withColumn("year", F.year("forex_date"))
+    .withColumn("month", F.lpad(F.month("forex_date"), 2, "0"))
+    .withColumn("day", F.lpad(F.dayofmonth("forex_date"), 2, "0"))
+    .write.mode("overwrite")
+    .partitionBy("year", "month", "day")
+    .parquet(fx_silver_path)
+)
 
 job.commit()
