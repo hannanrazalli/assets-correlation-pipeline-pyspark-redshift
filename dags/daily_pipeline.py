@@ -40,7 +40,7 @@ def daily_pipeline():
 
     # --- 2. PySpark Transform ---
     pyspark_transform = GlueJobOperator(
-        task_id="PySpark Medallion",
+        task_id="PySpark_Medallion",
         job_name="Glue",
         script_args={
             "--ds": "{{ ds }}",
@@ -50,28 +50,28 @@ def daily_pipeline():
 
     # --- 3. Copy to Redshift ---
     load_forex = S3ToRedshiftOperator(
-        task_id="Copy_forex_to_redshift",
+        task_id="Copy_int_forex_to_redshift",
         s3_bucket=BUCKET,
         s3_key="pyspark/forex/"
         "year={{ logical_date.strftime('%Y') }}/"
         "month={{ logical_date.strftime('%m') }}/"
         "day={{ logical_date.strftime('%d') }}/",
-        schema="raw_data",
-        table="raw_forex",
-        copy_options=["FORMAT AS JSON 'auto'"],
+        schema="int_assets_correlation",
+        table="int_forex",
+        copy_options=["FORMAT AS PARQUET"],
         redshift_conn_id="redshift_default",
         method="APPEND",
     )
 
-    load_stocks = S3ToRedshiftOperator(
-        task_id="Copy_stocks_to_redshift",
+    load_assets = S3ToRedshiftOperator(
+        task_id="Copy_int_assets_to_redshift",
         s3_bucket=BUCKET,
         s3_key="pyspark/assets/"
         "year={{ logical_date.strftime('%Y') }}/"
         "month={{ logical_date.strftime('%m') }}/"
         "day={{ logical_date.strftime('%d') }}/",
-        schema="raw_data",
-        table="raw_stocks",
+        schema="int_assets_correlation",
+        table="int_assets",
         copy_options=["FORMAT AS PARQUET"],
         redshift_conn_id="redshift_default",
         method="APPEND",
@@ -80,7 +80,7 @@ def daily_pipeline():
     run_forex = daily_forex()
     run_stocks = daily_stocks()
 
-    [run_forex, run_stocks] >> pyspark_transform >> [load_forex, load_stocks]
+    [run_forex, run_stocks] >> pyspark_transform >> [load_forex, load_assets]
 
 
 daily_pipeline()
