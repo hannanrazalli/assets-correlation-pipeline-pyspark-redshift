@@ -35,21 +35,19 @@ def safe_read(spark, path, file_format="parquet"):
     try:
         if file_format == "json":
             return spark.read.json(path)
-
-        else:
-            return spark.read.parquet(path)
+        return spark.read.parquet(path)
 
     except AnalysisException as e:
         if "PATH_NOT_FOUND" in str(e) or "Path does not exist" in str(e):
-            print(f"[INFO] Folder not found: {e}")
+            print(f"[INFO] Folder not found: {path}")
             return None
-
         raise e
 
 
-def medallion_forex(df_raw_fx):
-    if df_raw_fx is not None:
-        return None
+def process_forex(df_raw_fx):
+    if df_raw_fx is None:
+        print("[EMPTY] Folder is empty!")
+        return
 
     df_stg_fx = df_raw_fx.select(
         F.to_date(F.col("date")).alias("forex_date"),
@@ -91,7 +89,7 @@ def medallion_forex(df_raw_fx):
     return df_int_fx
 
 
-def medallion_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
+def process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
     df_assets = []
 
     if df_raw_stocks is not None:
@@ -114,6 +112,7 @@ def medallion_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
             F.lit("BTC_USD").cast(T.StringType()).alias("ticker_symbol"),
             F.col("BTC-USD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
+
         df_assets.append(df_stg_bitcoin)
 
     if df_raw_gold is not None:
@@ -122,9 +121,10 @@ def medallion_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
             F.lit("GLD").cast(T.StringType()).alias("ticker_symbol"),
             F.col("GLD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
+
         df_assets.append(df_stg_gold)
 
-    if df_assets is None:
+    if not df_assets:
         return None
 
     df_stg_assets = (
@@ -148,7 +148,7 @@ def medallion_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
             F.md5(F.concat_ws("||", F.col("price_date"), F.col("ticker_symbol"))).alias(
                 "assets_key"
             ),
-            F.col("price_date"),
+            F.col("price_date").cast("string"),
             F.col("ticker_symbol"),
             F.col("close_price"),
             F.current_timestamp().alias("processed_at"),
@@ -163,18 +163,18 @@ df_raw_stocks = safe_read(spark, stocks_raw_path)
 df_raw_bitcoin = safe_read(spark, bitcoin_raw_path)
 df_raw_gold = safe_read(spark, gold_raw_path)
 
+df_int_fx = process_forex(df_raw_fx)
+df_int_assets = process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold)
+
 forex_silver_path = f"s3://{BUCKET}/pyspark/forex/year={year}/month={month}/day={day}/"
 assets_silver_path = (
     f"s3://{BUCKET}/pyspark/assets/year={year}/month={month}/day={day}/"
 )
 
-df_int_forex = medallion_forex(df_raw_fx)
-df_int_assets = medallion_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold)
+if df_int_fx is not None:
+    df_int_fx.write.mode("overwrite").parquet(forex_silver_path)
 
-if df_int_forex:
-    df_int_forex.write.mode("overwrite").parquet(forex_silver_path)
-
-if df_int_assets:
+if df_int_assets is not None:
     df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
 
 job.commit()
