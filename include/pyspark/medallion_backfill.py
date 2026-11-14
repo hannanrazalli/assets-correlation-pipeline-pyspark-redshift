@@ -22,14 +22,6 @@ spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args["JOB_NAME"], args)
 
-BUCKET = "asset-correlation-pipeline-212105053682-ap-southeast-1-an"
-
-year, month, day = target_date.split("-")
-fx_raw_path = f"s3://{BUCKET}/raw/forex/year={year}/month={month}/day={day}/"
-stocks_raw_path = f"s3://{BUCKET}/raw/stocks/year={year}/month={month}/day={day}/"
-bitcoin_raw_path = f"s3://{BUCKET}/raw/bitcoin/year={year}/month={month}/day={day}/"
-gold_raw_path = f"s3://{BUCKET}/raw/gold/year={year}/month={month}/day={day}/"
-
 
 def safe_read(spark, path, file_format="parquet"):
     try:
@@ -39,18 +31,17 @@ def safe_read(spark, path, file_format="parquet"):
 
     except AnalysisException as e:
         if "PATH_NOT_FOUND" in str(e) or "Path does not exist" in str(e):
-            print(f"[INFO] Folder not found: {path}")
+            print(f"[INFO] Folder not found: {e}")
             return None
         raise e
 
 
 def process_forex(df_raw_fx):
     if df_raw_fx is None:
-        print("[EMPTY] Folder is empty!")
-        return
+        return None
 
-    df_stg_fx = df_raw_fx.select(
-        F.to_date(F.col("date")).alias("forex_date"),
+    df_stg_forex = df_raw_fx.select(
+        F.to_date("date").alias("forex_date"),
         F.col("base").cast(T.StringType()).alias("base_currency"),
         F.col("quote").cast(T.StringType()).alias("target_currency"),
         F.col("rate").try_cast(T.DecimalType(18, 6)).alias("exchange_rate"),
@@ -62,12 +53,12 @@ def process_forex(df_raw_fx):
         & F.col("exchange_rate").isNotNull()
     )
 
-    window_fx = Window.partitionBy(
+    window_forex = Window.partitionBy(
         "forex_date", "base_currency", "target_currency"
-    ).orderBy("staged_at")
+    ).orderBy(F.col("staged_at").desc())
 
     df_int_fx = (
-        df_stg_fx.withColumn("rn", F.row_number().over(window_fx))
+        df_stg_forex.withColumn("rn", F.row_number().over(window_forex))
         .filter(F.col("rn") == 1)
         .select(
             F.md5(
@@ -89,35 +80,35 @@ def process_forex(df_raw_fx):
     return df_int_fx
 
 
-def process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
+def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
     df_assets = []
 
     if df_raw_stocks is not None:
         df_stg_gspc = df_raw_stocks.select(
-            F.to_date(F.col("Date")).alias("price_date"),
+            F.to_date("Date").alias("price_date"),
             F.lit("GSPC").cast(T.StringType()).alias("ticker_symbol"),
             F.col("GSPC").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
         df_stg_klse = df_raw_stocks.select(
-            F.to_date(F.col("Date")).alias("price_date"),
+            F.to_date("Date").alias("price_date"),
             F.lit("KLSE").cast(T.StringType()).alias("ticker_symbol"),
             F.col("KLSE").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.extend([df_stg_gspc, df_stg_klse])
 
-    if df_raw_bitcoin is not None:
-        df_stg_bitcoin = df_raw_bitcoin.select(
-            F.to_date(F.col("Date")).alias("price_date"),
+    if df_raw_btc is not None:
+        df_stg_btc = df_raw_btc.select(
+            F.to_date("Date").alias("price_date"),
             F.lit("BTC_USD").cast(T.StringType()).alias("ticker_symbol"),
             F.col("BTC-USD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
-        df_assets.append(df_stg_bitcoin)
+        df_assets.append(df_stg_btc)
 
     if df_raw_gold is not None:
         df_stg_gold = df_raw_gold.select(
-            F.to_date(F.col("Date")).alias("price_date"),
+            F.to_date("Date").alias("price_date"),
             F.lit("GLD").cast(T.StringType()).alias("ticker_symbol"),
             F.col("GLD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
         )
@@ -129,26 +120,30 @@ def process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
 
     df_stg_assets = (
         reduce(DataFrame.unionByName, df_assets)
+        .withColumn("staged_at", F.current_timestamp())
         .filter(
             F.col("price_date").isNotNull()
             & F.col("ticker_symbol").isNotNull()
             & F.col("close_price").isNotNull()
         )
-        .withColumn("staged_at", F.current_timestamp())
     )
 
     window_assets = Window.partitionBy("price_date", "ticker_symbol").orderBy(
-        "staged_at"
+        F.col("staged_at").desc()
     )
 
     df_int_assets = (
         df_stg_assets.withColumn("rn", F.row_number().over(window_assets))
         .filter(F.col("rn") == 1)
         .select(
-            F.md5(F.concat_ws("||", F.col("price_date"), F.col("ticker_symbol"))).alias(
-                "assets_key"
-            ),
-            F.col("price_date").cast("string"),
+            F.md5(
+                F.concat_ws(
+                    "||",
+                    F.col("price_date").cast("string"),
+                    F.col("ticker_symbol"),
+                )
+            ).alias("assets_key"),
+            F.col("price_date"),
             F.col("ticker_symbol"),
             F.col("close_price"),
             F.current_timestamp().alias("processed_at"),
@@ -158,21 +153,29 @@ def process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold):
     return df_int_assets
 
 
-df_raw_fx = safe_read(spark, fx_raw_path, file_format="json")
-df_raw_stocks = safe_read(spark, stocks_raw_path)
-df_raw_bitcoin = safe_read(spark, bitcoin_raw_path)
-df_raw_gold = safe_read(spark, gold_raw_path)
+BUCKET = "asset-correlation-pipeline-212105053682-ap-southeast-1-an"
 
-df_int_fx = process_forex(df_raw_fx)
-df_int_assets = process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold)
+year, month, day = target_date.split("-")
+forex_raw_path = f"s3://{BUCKET}/raw/forex/year={year}/month={month}/day={day}/"
+stocks_raw_path = f"s3://{BUCKET}/raw/stocks/year={year}/month={month}/day={day}/"
+bitcoin_raw_path = f"s3://{BUCKET}/raw/bitcoin/year={year}/month={month}/day={day}/"
+gold_raw_path = f"s3://{BUCKET}/raw/gold/year={year}/month={month}/day={day}/"
 
 forex_silver_path = f"s3://{BUCKET}/pyspark/forex/year={year}/month={month}/day={day}/"
 assets_silver_path = (
     f"s3://{BUCKET}/pyspark/assets/year={year}/month={month}/day={day}/"
 )
 
-if df_int_fx is not None:
-    df_int_fx.write.mode("overwrite").parquet(forex_silver_path)
+df_raw_fx = safe_read(spark, forex_raw_path, file_format="json")
+df_raw_stocks = safe_read(spark, stocks_raw_path)
+df_raw_bitcoin = safe_read(spark, bitcoin_raw_path)
+df_raw_gold = safe_read(spark, gold_raw_path)
+
+df_int_forex = process_forex(df_raw_fx)
+df_int_assets = process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold)
+
+if df_int_forex is not None:
+    df_int_forex.write.mode("overwrite").parquet(forex_silver_path)
 
 if df_int_assets is not None:
     df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
