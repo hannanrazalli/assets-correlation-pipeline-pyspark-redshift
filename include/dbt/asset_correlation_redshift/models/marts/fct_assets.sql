@@ -6,11 +6,11 @@
 ) }}
 
 with int_forex as (
-    select * from {{ ref('int_forex') }}
+    select * from {{ source('assets_sources', 'int_forex') }}
 ),
 
 int_assets as (
-    select * from {{ ref('int_assets') }}
+    select * from {{ source('assets_sources', 'int_assets') }}
 ),
 
 dim_assets as (
@@ -19,7 +19,7 @@ dim_assets as (
 
 joined as (
     select
-        s.asset_key,
+        s.assets_key,
         s.price_date,
         s.ticker_symbol,
         a.asset_name,

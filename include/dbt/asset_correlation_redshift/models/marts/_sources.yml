@@ -1,0 +1,49 @@
+version: 2
+
+sources:
+  - name: assets_sources
+    description: "Intermediate sources for forex and assets. Already joined, renamed, casted and deduplicated"
+    database: dev
+    schema: int_assets_correlation
+    tables:
+      - name: int_forex
+        columns:
+          - name: forex_key
+            tests:
+              - unique
+              - not_null
+          
+          - name: forex_date
+            tests:
+              - not_null
+
+          - name: base_currency
+            tests:
+              - not_null
+
+          - name: target_currency
+            tests:
+              - not_null
+
+          - name: exchange_rate
+            tests:
+              - not_null
+
+      - name: int_assets
+        columns:
+          - name: assets_key
+            tests:
+              - unique
+              - not_null
+
+          - name: price_date
+            tests:
+              - not_null
+
+          - name: ticker_symbol
+            tests:
+              - not_null
+
+          - name: close_price
+            tests:
+              - not_null

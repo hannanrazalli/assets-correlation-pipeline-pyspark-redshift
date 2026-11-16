@@ -45,7 +45,7 @@ def process_forex(df_raw_fx):
         F.to_date("date").alias("forex_date"),
         F.col("base").cast(T.StringType()).alias("base_currency"),
         F.col("quote").cast(T.StringType()).alias("target_currency"),
-        F.col("rate").try_cast(T.DecimalType(18, 6)).alias("exchange_rate"),
+        F.col("rate").cast(T.DecimalType(18, 6)).alias("exchange_rate"),
         F.current_timestamp().alias("staged_at"),
     ).filter(
         F.col("forex_date").isNotNull()
@@ -88,12 +88,12 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_gspc = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("GSPC").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("GSPC").try_cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("^GSPC").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
         df_stg_klse = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("KLSE").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("KLSE").try_cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("^KLSE").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.extend([df_stg_gspc, df_stg_klse])
@@ -102,7 +102,7 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_bitcoin = df_raw_btc.select(
             F.to_date("Date").alias("price_date"),
             F.lit("BTC_USD").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("BTC-USD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("BTC-USD").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.append(df_stg_bitcoin)
@@ -111,7 +111,7 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_gold = df_raw_gold.select(
             F.to_date("Date").alias("price_date"),
             F.lit("GLD").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("GLD").try_cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("GLD").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.append(df_stg_gold)

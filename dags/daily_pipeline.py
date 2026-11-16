@@ -2,9 +2,19 @@ import os
 from datetime import timedelta
 
 from airflow.decorators import dag, task
+from airflow.operators.python import ShortCircuitOperator
 from airflow.providers.amazon.aws.operators.glue import GlueJobOperator
 from airflow.providers.amazon.aws.transfers.s3_to_redshift import S3ToRedshiftOperator
+from cosmos import DbtTaskGroup
 from pendulum import datetime
+
+from include.utilities.check_files import has_files
+from include.utilities.cosmos_config import (
+    execution_config,
+    profile_config,
+    project_config,
+    render_config,
+)
 
 default_args = {
     "owner": "Hannan",
@@ -33,15 +43,29 @@ def daily_pipeline():
 
     @task(task_id="Stocks_API_to_S3")
     def run_stocks(ds=None):
-        from include.ingestions.stocks import daily_stocks
+        from include.ingestions.stocks import stocks
 
-        daily_stocks(ds=ds)
+        stocks(ds=ds)
 
     pyspark_transform = GlueJobOperator(
         task_id="medallion_bronze_silver",
         job_name="Glue",
         script_args={"--ds": "{{ ds }}"},
         wait_for_completion=True,
+    )
+
+    check_forex = ShortCircuitOperator(
+        task_id="check_forex_has_data",
+        python_callable=has_files,
+        op_kwargs={"name": "forex"},
+        ignore_downstream_trigger_rules=False,
+    )
+
+    check_assets = ShortCircuitOperator(
+        task_id="check_assets_has_data",
+        python_callable=has_files,
+        op_kwargs={"name": "assets"},
+        ignore_downstream_trigger_rules=False,
     )
 
     load_forex = S3ToRedshiftOperator(
@@ -72,10 +96,24 @@ def daily_pipeline():
         method="APPEND",
     )
 
+    dbt_build = DbtTaskGroup(
+        group_id="dbt_build_all",
+        project_config=project_config,
+        profile_config=profile_config,
+        execution_config=execution_config,
+        render_config=render_config,
+        operator_args={"install_deps": True, "trigger_rule": "none_failed"},
+    )
+
     ingest_forex = run_forex()
     ingest_stocks = run_stocks()
 
-    [ingest_forex, ingest_stocks] >> pyspark_transform >> [load_forex, load_assets]
+    [ingest_forex, ingest_stocks] >> pyspark_transform
+
+    pyspark_transform >> check_forex >> load_forex
+    pyspark_transform >> check_assets >> load_assets
+
+    [load_forex, load_assets] >> dbt_build
 
 
 daily_pipeline()
