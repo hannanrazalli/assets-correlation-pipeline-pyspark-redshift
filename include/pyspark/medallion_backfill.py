@@ -11,10 +11,9 @@ from pyspark.sql import types as T
 from pyspark.sql.utils import AnalysisException
 from pyspark.sql.window import Window
 
-args = getResolvedOptions(sys.argv, ["JOB_NAME", "ds"])
+args = getResolvedOptions(sys.argv, ["JOB_NAME"])
 
 job_name = args["JOB_NAME"]
-target_date = args["ds"]
 
 sc = SparkContext()
 glueContext = GlueContext(sc)
@@ -156,11 +155,10 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
 
 BUCKET = "asset-correlation-pipeline-212105053682-ap-southeast-1-an"
 
-year, month, day = target_date.split("-")
-fx_raw_path = f"s3://{BUCKET}/raw/forex/year={year}/month={month}/day={day}/"
-stocks_raw_path = f"s3://{BUCKET}/raw/stocks/year={year}/month={month}/day={day}/"
-bitcoin_raw_path = f"s3://{BUCKET}/raw/bitcoin/year={year}/month={month}/day={day}/"
-gold_raw_path = f"s3://{BUCKET}/raw/gold/year={year}/month={month}/day={day}/"
+fx_raw_path = f"s3://{BUCKET}/raw/forex/"
+stocks_raw_path = f"s3://{BUCKET}/raw/stocks"
+bitcoin_raw_path = f"s3://{BUCKET}/raw/bitcoin/"
+gold_raw_path = f"s3://{BUCKET}/raw/gold/"
 
 df_raw_fx = safe_read(spark, fx_raw_path, file_format="json")
 df_raw_stocks = safe_read(spark, stocks_raw_path)
@@ -170,15 +168,29 @@ df_raw_gold = safe_read(spark, gold_raw_path)
 df_int_fx = process_forex(df_raw_fx)
 df_int_assets = process_assets(df_raw_stocks, df_raw_bitcoin, df_raw_gold)
 
-fx_silver_path = f"s3://{BUCKET}/pyspark/forex/year={year}/month={month}/day={day}/"
-assets_silver_path = (
-    f"s3://{BUCKET}/pyspark/assets/year={year}/month={month}/day={day}/"
-)
+fx_silver_path = f"s3://{BUCKET}/pyspark/forex/"
+assets_silver_path = f"s3://{BUCKET}/pyspark/assets/"
 
 if df_int_fx is not None:
-    df_int_fx.write.mode("overwrite").parquet(fx_silver_path)
+    df_fx_partition = (
+        df_int_fx.withColumn("year", F.date_format("forex_date", "yyyy"))
+        .withColumn("month", F.date_format("forex_date", "MM"))
+        .withColumn("day", F.date_format("forex_date", "dd"))
+    )
+
+    df_int_fx.write.mode("overwrite").partitionBy("year", "month", "day").parquet(
+        fx_silver_path
+    )
 
 if df_int_assets is not None:
-    df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
+    df_asset_partition = (
+        df_int_assets.withColumn("year", F.date_format("price_date", "yyyy"))
+        .withColumn("month", F.date_format("price_date", "MM"))
+        .withColumn("day", F.date_format("price_date", "dd"))
+    )
+
+    df_int_assets.write.mode("overwrite").partitionBy("year", "month", "day").parquet(
+        assets_silver_path
+    )
 
 job.commit()
