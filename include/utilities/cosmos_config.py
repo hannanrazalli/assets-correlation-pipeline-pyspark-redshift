@@ -20,7 +20,9 @@ profile_config = ProfileConfig(
     target_name=os.getenv("DBT_TARGET", "dev"),
     profile_mapping=RedshiftUserPasswordProfileMapping(
         conn_id="redshift_default",
-        profile_args={"schema": os.getenv("DBT_TARGET_SCHEMA", "analytics")},
+        profile_args={
+            "schema": os.getenv("DBT_TARGET_SCHEMA", "analytics_pyspark_redshift")
+        },
     ),
 )
 
