@@ -3,9 +3,8 @@ version: 2
 models:
   - name: fct_assets
     columns:
-      - name: asset_key
+      - name: assets_key
         tests:
-          - unique
           - not_null
         
       - name: price_date

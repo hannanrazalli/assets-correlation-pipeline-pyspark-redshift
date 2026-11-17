@@ -1,16 +1,52 @@
 {{ config(
     materialized='incremental',
     incremental_strategy='merge',
-    unique_key='asset_key',
+    unique_key='assets_key',
     on_schema_change='append_new_column'
 ) }}
 
-with int_forex as (
-    select * from {{ source('assets_sources', 'int_forex') }}
+with int_forex_source as (
+    select
+        *,
+        row_number() over(
+            partition by forex_date, base_currency, target_currency
+            order by processed_at desc
+        ) as rn
+    from {{ source('assets_sources', 'int_forex') }}
+    {% if is_incremental() %}
+        where forex_date >= (
+            select coalesce(max(price_date), cast('1900-01-01' as date)) - interval '3' day
+            from {{ this }}
+        )
+    {% endif %}
+),
+
+int_forex as (
+    select *
+    from int_forex_source
+    where rn = 1
+),
+
+int_assets_source as (
+    select
+        *,
+        row_number() over(
+            partition by price_date, ticker_symbol
+            order by processed_at desc
+        ) as rn
+    from {{ source('assets_sources', 'int_assets') }}
+    {% if is_incremental() %}
+        where price_date >= (
+            select coalesce(max(price_date), cast('1900-01-01' as date)) - interval '3' day
+            from {{ this }}
+        )
+    {% endif %}
 ),
 
 int_assets as (
-    select * from {{ source('assets_sources', 'int_assets') }}
+    select * 
+    from int_assets_source
+    where rn = 1
 ),
 
 dim_assets as (
@@ -29,7 +65,7 @@ joined as (
         f.exchange_rate,
 
         case
-            when s.ticker_symbol = '^KLSE' then s.close_price
+            when s.ticker_symbol = 'KLSE' then s.close_price
             else round(s.close_price * coalesce(f.exchange_rate, 1.0), 2)
         end as close_price_myr
     from int_assets s
@@ -44,13 +80,6 @@ final_fact as (
         *,
         {{ audit_columns('marts') }}
     from joined
-
-    {% if is_incremental() %}
-        where price_date >= (
-            select coalesce(max(price_date), cast('1900-01-01' as date)) - interval '3' day
-            from {{ this }}
-        )
-    {% endif %}
 )
 
 select *
