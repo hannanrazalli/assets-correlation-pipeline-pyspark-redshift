@@ -25,13 +25,19 @@ def stocks(ds: str | None = None):
 
     df = yf.download(tickers=["^GSPC", "^KLSE"], start=start, end=end, interval="1d")
 
-    if df.empty:
+    if not df:
         print(f"[EMPTY] Market closed on {ds}. Skipping...")
         return
 
     s3_hook = S3Hook(aws_conn_id="aws_default")
     df_close = df["Close"].reset_index()
-    df_close.columns = ["Date", "GSPC", "KLSE"]
+    df_close = df_close.rename(
+        columns={
+            "^GSPC": "GSPC",
+            "^KLSE": "KLSE",
+        }
+    )
+
     s3_bucket = os.getenv("BUCKET_NAME")
     s3_key = f"s3://{s3_bucket}/raw/stocks/year={year}/month={month}/day={day}/stocks_{dt.strftime('%Y%m%d')}.parquet"
 

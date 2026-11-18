@@ -19,8 +19,8 @@ def daily_forex(ds: str | None = None):
 
     url = "https://api.frankfurter.dev/v2/rates"
     params = {
-        "base": "usd",
-        "quotes": "myr",
+        "base": "USD",
+        "quotes": "MYR",
         "date": ds,
     }
 

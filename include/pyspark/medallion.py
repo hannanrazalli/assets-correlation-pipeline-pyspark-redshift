@@ -154,7 +154,7 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
     return df_int_assets
 
 
-BUCKET = "asset-correlation-pipeline-212105053682-ap-southeast-1-an"
+BUCKET = "assets-correlation-pyspark-212105053682-ap-southeast-1-an"
 
 year, month, day = target_date.split("-")
 fx_raw_path = f"s3://{BUCKET}/raw/forex/year={year}/month={month}/day={day}/"

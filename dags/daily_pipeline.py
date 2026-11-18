@@ -15,18 +15,20 @@ from include.utilities.cosmos_config import (
     project_config,
     render_config,
 )
+from include.utilities.slack_alerts import slack_failure_alert
 
 default_args = {
     "owner": "Hannan",
     "retries": 3,
     "retry_delay": timedelta(minutes=1),
+    "on_failure_callback": slack_failure_alert,
 }
 
 BUCKET = os.getenv("BUCKET_NAME")
 
 
 @dag(
-    dag_id="Daily_data_ingest",
+    dag_id="Assets_correlation_pipeline",
     default_args=default_args,
     schedule="@daily",
     start_date=datetime(2026, 11, 14),
@@ -35,41 +37,45 @@ BUCKET = os.getenv("BUCKET_NAME")
 )
 def daily_pipeline():
 
-    @task(task_id="FX_API_to_S3")
+    # --- STEP 1. API INGESTIONS ---
+    @task(task_id="1_FX_API_to_S3")
     def run_forex(ds=None):
         from include.ingestions.forex import daily_forex
 
         daily_forex(ds=ds)
 
-    @task(task_id="Stocks_API_to_S3")
+    @task(task_id="1_Stocks_API_to_S3")
     def run_stocks(ds=None):
         from include.ingestions.stocks import stocks
 
         stocks(ds=ds)
 
+    # --- STEP 2. PYSPARK TRANSFORMATION (RENAMED, CASTED, DEDUPLICATE) ---
     pyspark_transform = GlueJobOperator(
-        task_id="medallion_bronze_silver",
+        task_id="2_Medallion_bronze_silver",
         job_name="Glue",
         script_args={"--ds": "{{ ds }}"},
         wait_for_completion=True,
     )
 
+    # --- STEP 3. CHECK INGESTIONS FOLDER ---
     check_forex = ShortCircuitOperator(
-        task_id="check_forex_has_data",
+        task_id="3_Check_forex_has_data",
         python_callable=has_files,
         op_kwargs={"name": "forex"},
         ignore_downstream_trigger_rules=False,
     )
 
     check_assets = ShortCircuitOperator(
-        task_id="check_assets_has_data",
+        task_id="3_Check_assets_has_data",
         python_callable=has_files,
         op_kwargs={"name": "assets"},
         ignore_downstream_trigger_rules=False,
     )
 
+    # --- STEP 4. COPY TO REDSHIFT ---
     load_forex = S3ToRedshiftOperator(
-        task_id="copy_fx_to_redshift",
+        task_id="4_Copy_fx_to_redshift",
         s3_bucket=BUCKET,
         s3_key="pyspark/forex/"
         "year={{ logical_date.strftime('%Y') }}/"
@@ -83,7 +89,7 @@ def daily_pipeline():
     )
 
     load_assets = S3ToRedshiftOperator(
-        task_id="copy_assets_to_redshift",
+        task_id="4_Copy_assets_to_redshift",
         s3_bucket=BUCKET,
         s3_key="pyspark/assets/"
         "year={{ logical_date.strftime('%Y') }}/"
@@ -96,6 +102,7 @@ def daily_pipeline():
         method="APPEND",
     )
 
+    # --- STEP 5. DBT TRANSFORMATION (MARTS) ---
     dbt_build = DbtTaskGroup(
         group_id="dbt_build_all",
         project_config=project_config,
@@ -105,6 +112,7 @@ def daily_pipeline():
         operator_args={"install_deps": True, "trigger_rule": "none_failed"},
     )
 
+    # --- STEP 6. WORKFLOWS ---
     ingest_forex = run_forex()
     ingest_stocks = run_stocks()
 
