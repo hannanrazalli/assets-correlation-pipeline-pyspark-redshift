@@ -24,11 +24,11 @@ def daily_forex(ds: str | None = None):
         "date": ds,
     }
 
-    response = requests.get(url, params)
+    response = requests.get(url, params=params, timeout=10)
     response.raise_for_status()
     data = response.json()
 
-    ndjson = "\n".join([json.dumps(d) for d in data])
+    ndjson = "\n".join([json.dumps(row) for row in data])
     dt = datetime.strptime(ds, "%Y-%m-%d").replace(tzinfo=UTC)
     year, month, day = dt.strftime("%Y"), dt.strftime("%m"), dt.strftime("%d")
 
@@ -43,6 +43,6 @@ def daily_forex(ds: str | None = None):
         replace=True,
     )
 
-    logger.info(f"[SUCCESS] Successfully ibgest data for date: {ds}")
+    logger.info(f"[SUCCESS] Successfully ingest Forex API for date; {ds}")
 
     return ndjson
