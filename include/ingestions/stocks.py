@@ -25,7 +25,7 @@ def stocks(ds: str | None = None):
 
     df = yf.download(tickers=["^GSPC", "^KLSE"], start=start, end=end, interval="1d")
 
-    if not df:
+    if df is None:
         print(f"[EMPTY] Market closed on {ds}. Skipping...")
         return
 
