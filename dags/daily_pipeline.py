@@ -109,7 +109,10 @@ def daily_pipeline():
         profile_config=profile_config,
         execution_config=execution_config,
         render_config=render_config,
-        operator_args={"install_deps": True, "trigger_rule": "none_failed"},
+        operator_args={
+            "install_deps": True,
+            "trigger_rule": "none_failed_min_one_success",
+        },
     )
 
     # --- STEP 6. WORKFLOWS ---
