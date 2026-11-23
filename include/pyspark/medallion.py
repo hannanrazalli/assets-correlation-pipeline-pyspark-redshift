@@ -88,12 +88,12 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_gspc = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("GSPC").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("^GSPC").cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("GSPC").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
         df_stg_klse = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("KLSE").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("^KLSE").cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("KLSE").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.extend([df_stg_gspc, df_stg_klse])
@@ -175,10 +175,10 @@ assets_silver_path = (
     f"s3://{BUCKET}/pyspark/assets/year={year}/month={month}/day={day}/"
 )
 
-if df_int_fx is not None:
+if df_int_fx is not None and not df_int_fx.isEmpty():
     df_int_fx.write.mode("overwrite").parquet(fx_silver_path)
 
-if df_int_assets is not None:
+if df_int_assets is not None and not df_int_assets.isEmpty():
     df_int_assets.write.mode("overwrite").parquet(assets_silver_path)
 
 job.commit()

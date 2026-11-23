@@ -87,12 +87,12 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_gspc = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("GSPC").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("^GSPC").cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("GSPC").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
         df_stg_klse = df_raw_stocks.select(
             F.to_date("Date").alias("price_date"),
             F.lit("KLSE").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("^KLSE").cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("KLSE").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.extend([df_stg_gspc, df_stg_klse])
@@ -101,7 +101,7 @@ def process_assets(df_raw_stocks, df_raw_btc, df_raw_gold):
         df_stg_bitcoin = df_raw_btc.select(
             F.to_date("Date").alias("price_date"),
             F.lit("BTC_USD").cast(T.StringType()).alias("ticker_symbol"),
-            F.col("BTC-USD").cast(T.DecimalType(18, 6)).alias("close_price"),
+            F.col("BTC_USD").cast(T.DecimalType(18, 6)).alias("close_price"),
         )
 
         df_assets.append(df_stg_bitcoin)
@@ -178,7 +178,7 @@ if df_int_fx is not None:
         .withColumn("day", F.date_format("forex_date", "dd"))
     )
 
-    df_int_fx.write.mode("overwrite").partitionBy("year", "month", "day").parquet(
+    df_fx_partition.write.mode("overwrite").partitionBy("year", "month", "day").parquet(
         fx_silver_path
     )
 
@@ -189,8 +189,8 @@ if df_int_assets is not None:
         .withColumn("day", F.date_format("price_date", "dd"))
     )
 
-    df_int_assets.write.mode("overwrite").partitionBy("year", "month", "day").parquet(
-        assets_silver_path
-    )
+    df_asset_partition.write.mode("overwrite").partitionBy(
+        "year", "month", "day"
+    ).parquet(assets_silver_path)
 
 job.commit()
