@@ -34,7 +34,7 @@ def safe_read(spark, path, file_format="parquet"):
             print(f"[INFO] Folder not found: {path}")
             return None
 
-        raise e
+        raise
 
 
 def process_forex(df_raw_fx):
